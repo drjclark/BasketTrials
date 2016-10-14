@@ -26,47 +26,26 @@
 ### Version 5, Sep 2016: Corrected true positive and negative calculations. Sensitivity and specificity 
 ###               are just the true positive and true negative rate respectively.
 ###               Also calculate and output the expected number of indeterminate strata
+### Version 6, Oct 2016: Modified the find_postk function, replacing loops with matrix operations.
 ##########################################
-
-number2binary <- function(number,noBits) {
-  binary_vector = rev(as.numeric(intToBits(number)))
-  if(missing(noBits)){return(binary_vector)}
-  else{binary_vector[-(1:(length(binary_vector)-noBits))]}
-}
-
 
 find_postk <- function(lambda, gamma, r, n, plo, phi, kk) {
   pnull <- 1 - gamma
-  nstate <- 2^kk
-  binvec <- 0 * seq(nstate)
-  prior <- 0 * seq(nstate)
-  for (k in 0:(nstate - 1)) {
-    binvec <- number2binary(k, kk)
-    kp <- k + 1
-    prior[kp] <- (1 - lambda) * (gamma^sum(binvec)) * (1 - gamma)^(sum(1 - binvec))
-  }
+  binvec =matrix(0,2^kk,kk)
+  for(i in 1:(2^kk)) binvec[i,]=as.integer(intToBits(i-1)[1:kk])
+  prior <- (1 - lambda) *(gamma^(binvec%*%rep(1,kk)))*(1 - gamma)^((1 - binvec)%*%rep(1,kk))
   prior[1] <- prior[1] + lambda * pnull
-  prior[nstate] <- prior[nstate] + lambda * (1 - pnull)
-  loglik <- 0 * seq(nstate)
-  for (k in 0:(nstate - 1)) {
-    kp <- k + 1
-    binvec <- number2binary(k, kk)
-    loglik[kp] <- sum(r * log(phi * binvec + plo * (1 - binvec))) + 
-    sum((n - r) * log((1 - phi) * binvec + (1 - plo) * (1 - binvec)))
-  }
-  post <- 0 * seq(nstate)
+  prior[2^kk] <- prior[2^kk] + lambda * (1 - pnull)
+
+  phiM =matrix(phi,2^kk,kk,byrow=TRUE)
+  ploM =matrix(plo,2^kk,kk,byrow=TRUE)
+  rM   =matrix(r,2^kk,kk,byrow=TRUE)
+  nM   =matrix(n,2^kk,kk,byrow=TRUE)
+
+  loglik = ((rM*log(phiM*binvec+ploM*(1-binvec)))%*%rep(1,kk))  +(((nM-rM)*log((1-phiM)*binvec+(1-ploM)*(1-binvec)))%*%rep(1,kk))
   post <- prior * exp(loglik)
   post <- post/sum(post)
-  postk <- 0 * seq(kk)
-  for (j in 0:(nstate - 1)) {
-    binvec <- number2binary(j, kk)
-    for (k in 1:kk) {
-      if (binvec[k] == 1) {
-        postk[k] <- postk[k] + post[j + 1]
-      }
-    }
-  }
-  postk
+  as.vector(rep(1,2^kk)%*%(matrix(post,2^kk,kk)*binvec))
 }
 
 samplesize <- function(lambda, gamma, plo, phi, kk, nrep, ntot, nblock, prev=rep(1,kk), delta) {
